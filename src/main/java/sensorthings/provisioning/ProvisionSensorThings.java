@@ -2,6 +2,7 @@ package sensorthings.provisioning;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPut;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
@@ -41,7 +42,6 @@ import static com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL;
 @JsonInclude(NON_NULL)
 @EnableSwagger2
 public class ProvisionSensorThings {
-    private static boolean retryStatements = false;
 
     public String getErrorMessage() {
         return errorMessage;
@@ -52,25 +52,8 @@ public class ProvisionSensorThings {
     }
 
     private String errorMessage = null;
-
-    public String getAgentBaseURI() {
-        return agentBaseURI;
-    }
-
-    public void setAgentBaseURI(String agentBaseUri) {
-        this.agentBaseURI = agentBaseUri;
-    }
-
-    public String getGostBaseURI() {
-        return gostBaseURI;
-    }
-
-    public void setGostBaseURI(String gostBaseUri) {
-        this.gostBaseURI = gostBaseUri;
-    }
-
-    private String agentBaseURI = "undefined";
-    private String gostBaseURI = null;
+    private static String agentBaseURI = "undefined";
+    private static String gostBaseURI = null;
     private ObjectMapper mapper = new ObjectMapper();
     private ArrayNode statementsResponses = null;
     private ArrayNode locationsResponses = null;
@@ -94,22 +77,9 @@ public class ProvisionSensorThings {
         } catch (IOException e) {
             e.printStackTrace();
         }
-        JsonNode gostBaseURINode = thingTree.get("gostBaseURI");
-        if (gostBaseURINode != null) {
-            setGostBaseURI(gostBaseURINode.asText());
-            Configuration.baseUri = getGostBaseURI();
-        } else {
-            setErrorMessage("Make sure that gostBaseURI is given with request");
-            throw new IllegalArgumentException(getErrorMessage());
-        }
 
-        JsonNode agentBaseURINode = thingTree.get("agentBaseURI");
-
-        if (agentBaseURINode != null) {
-            setAgentBaseURI(agentBaseURINode.asText());
-        } else {
-            retryStatements = false;
-        }
+        getUsingHttpClient(agentBaseURI+"/statement/");
+        getUsingHttpClient(gostBaseURI+"/v1.0/Things");
 
         Iterator<JsonNode> things = thingTree.get("Things").elements();
 
@@ -148,6 +118,7 @@ public class ProvisionSensorThings {
 
         while (things.hasNext()) {
             JsonNode thing = things.next();
+            existingThings.put(thing.get("name").asText(), getExistingThing(thing));
             JsonNode propertiesNode = thing.get("properties");
             JsonNode locations = thing.get("Locations");
             List<Integer> locationIDs = new ArrayList<Integer>();
@@ -157,6 +128,7 @@ public class ProvisionSensorThings {
 
                 while (iter.hasNext()) {
                     JsonNode location = iter.next();
+                    existingLocations.put(location.get("name").asText(), getExistingLocation(location));
                     locationIDs.add(postOrPatchLocation(location, existingLocations.get(location.get("name").asText())));
                 }
             }
@@ -166,12 +138,14 @@ public class ProvisionSensorThings {
             if (datastreams != null) {
                 Iterator<JsonNode> iter = thing.get("Datastreams").elements();
                 int datastreamId = 0;
-                //List<String> datastreamNames = new ArrayList<String>;
                 while (iter.hasNext()) {
                     JsonNode datastream = iter.next();
+                    existingDatastreams.put(datastream.get("name").asText(), getExistingDatastream(datastream));
                     JsonNode observedProperty = datastream.get("ObservedProperty");
+                    existingObservedProperties.put(observedProperty.get("name").asText(), getExistingObservedProperty(observedProperty));
                     int observedPropertyId = postOrPatchObservedProperty(observedProperty, existingObservedProperties.get(observedProperty.get("name").asText()));
                     JsonNode sensor = datastream.get("Sensor");
+                    existingSensors.put(sensor.get("name").asText(), getExistingSensor(sensor));
                     int sensorId = postOrPatchSensor(sensor, existingSensors.get(sensor.get("name").asText()));
                     String datastreamName = datastream.get("name").asText();
                     datastreamId = postOrPatchDatastream(datastream, existingDatastreams.get(datastream.get("name").asText()), thingId, observedPropertyId, sensorId);
@@ -184,7 +158,7 @@ public class ProvisionSensorThings {
                             String propertyName = propertiesFields.next();
 
                             if (propertyName.equals(datastreamName)) {
-                                if (getAgentBaseURI() != null && !getAgentBaseURI().equals("undefined")) {
+                                if (agentBaseURI != null && !agentBaseURI.equals("undefined")) {
                                     JsonNode datastreamProperty = propertiesNode.get(datastreamName);
                                     String statement = datastreamProperty.get("statement").asText();
                                     ObjectNode postStatementJson = mapper.createObjectNode();
@@ -201,8 +175,6 @@ public class ProvisionSensorThings {
                                     } catch (JsonProcessingException e) {
                                         e.printStackTrace();
                                     }
-                                } else {
-                                    retryStatements = true;
                                 }
                             }
                         }
@@ -213,6 +185,24 @@ public class ProvisionSensorThings {
     }
 
     public static void main(String[] args) {
+
+        gostBaseURI = System.getenv("GOST_BASE_URI");
+        agentBaseURI = System.getenv("AGENT_BASE_URI");
+
+        if (gostBaseURI == null) {
+            System.out.println("Set GOST_BASE_URI environment variable. Exiting...");
+            System.exit(1);
+        } else {
+            Configuration.baseUri = gostBaseURI;
+            System.out.println("GOST_BASE_URI = " + gostBaseURI);
+        }
+
+        if (agentBaseURI == null) {
+            System.out.println("Environment variable AGENT_BASE_URI is not set. No statements will be created.");
+        }else {
+            System.out.println("AGENT_BASE_URI = " + agentBaseURI);
+        }
+
         SpringApplication.run(ProvisionSensorThings.class, args);
     }
 
@@ -332,9 +322,28 @@ public class ProvisionSensorThings {
         this.sensorsResponses = sensors;
     }
 
+    public void getUsingHttpClient(String endpoint) {
+        CloseableHttpClient client = HttpClients.createDefault();
+        HttpGet httpGet = new HttpGet(endpoint);
+        CloseableHttpResponse response = null;
+        try {
+            response = client.execute(httpGet);
+        } catch (IOException e) {
+            e.printStackTrace();
+            setErrorMessage("Endpoint "+endpoint+" is not reachable");
+        throw new IllegalStateException(getErrorMessage());
+        }
+
+        try {
+            client.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
     public void putJsonUsingHttpClient(String name, String json) {
         CloseableHttpClient client = HttpClients.createDefault();
-        HttpPut httpPut = new HttpPut(getAgentBaseURI() + "/statement/" + name);
+        HttpPut httpPut = new HttpPut(agentBaseURI + "/statement/" + name);
 
         StringEntity entity = null;
         try {
@@ -350,7 +359,6 @@ public class ProvisionSensorThings {
         try {
             response = client.execute(httpPut);
         } catch (IOException e) {
-            retryStatements = true;
             e.printStackTrace();
         }
         if (response.getEntity() != null) {
@@ -409,7 +417,7 @@ public class ProvisionSensorThings {
         JsonNode locationEncodingType = location.get("encodingType");
         JsonNode locationLocation = location.get("location");
 
-        if (existingLocation != null /*locationId > 0*/) {
+        if (existingLocation != null) {
 
             JsonNode existingDescription = existingLocation.get("description");
             JsonNode existingEncodingType = existingLocation.get("encodingType");
@@ -515,7 +523,7 @@ public class ProvisionSensorThings {
         ObjectNode datastreamSensor = mapper.createObjectNode();
         datastreamSensor.put("@iot.id", Integer.toString(sensorId));
 
-        if (existingDatastream != null /*datastreamId > 0*/) {
+        if (existingDatastream != null) {
 
             JsonNode existingDescription = existingDatastream.get("description");
             JsonNode existingObservationType = existingDatastream.get("observationType");
@@ -614,7 +622,7 @@ public class ProvisionSensorThings {
         JsonNode sensorEncodingType = sensor.get("encodingType");
         JsonNode sensorMetadata = sensor.get("metadata");
 
-        if (existingSensor != null /*sensorId > 0*/) {
+        if (existingSensor != null) {
 
             JsonNode existingDescription = existingSensor.get("description");
             JsonNode existingEncodingType = existingSensor.get("encodingType");
@@ -708,7 +716,7 @@ public class ProvisionSensorThings {
         JsonNode observedPropertyDescription = observedProperty.get("description");
         JsonNode observedPropertyDefinition = observedProperty.get("definition");
 
-        if (existingObservedProperty != null/*observedPropertyId > 0*/) {
+        if (existingObservedProperty != null) {
 
             JsonNode existingDescription = existingObservedProperty.get("description");
             JsonNode existingDefinition = existingObservedProperty.get("definition");
@@ -807,9 +815,8 @@ public class ProvisionSensorThings {
             thingId = existingThingId;
 
             boolean propertiesChanged = false;
-            if ((thingProperties != null ^ existingProperties != null) || retryStatements) {
+            if ((thingProperties != null ^ existingProperties != null)) {
                 propertiesChanged = true;
-                retryStatements = false;
             } else {
                 if (thingProperties != null) {
                     propertiesChanged = !thingProperties.equals(existingProperties);

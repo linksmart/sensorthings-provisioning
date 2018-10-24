@@ -4,8 +4,8 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>Test</groupId>
-    <artifactId>ProvisionGost</artifactId>
+    <groupId>ogc-st</groupId>
+    <artifactId>ProvisionSensorThings</artifactId>
     <version>1.0-SNAPSHOT</version>
 
 
@@ -77,7 +77,34 @@
         </plugins>
     </build>
 
+    <distributionManagement>
+
+        <repository>
+            <id>releases</id>
+            <name>Releases</name>
+            <url>https://nexus.linksmart.eu/repository/maven-releases/</url>
+        </repository>
+        <snapshotRepository>
+            <id>snapshots</id>
+            <name>Snapshots</name>
+            <url>https://nexus.linksmart.eu/repository/maven-snapshots/</url>
+            <uniqueVersion>false</uniqueVersion>
+        </snapshotRepository>
+    </distributionManagement>
+
     <repositories>
+        <repository>
+            <id>central</id>
+            <url>https://nexus.linksmart.eu/repository/public/</url>
+            <releases>
+                <enabled>true</enabled>
+                <updatePolicy>never</updatePolicy>
+            </releases>
+            <snapshots>
+                <enabled>true</enabled>
+                <updatePolicy>always</updatePolicy>
+            </snapshots>
+        </repository>
         <repository>
             <id>spring-releases</id>
             <url>https://repo.spring.io/libs-release</url>
