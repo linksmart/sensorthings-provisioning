@@ -39,6 +39,7 @@ import static com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL;
 @EnableSwagger2
 public class ProvisionSensorThings {
 
+    
     private static String agentBaseURI = "undefined";
     private static String gostBaseURI = null;
     private String errorMessage = null;
