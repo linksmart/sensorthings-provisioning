@@ -39,7 +39,6 @@ import static com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL;
 @EnableSwagger2
 public class ProvisionSensorThings {
 
-    
     private static String agentBaseURI = "undefined";
     private static String gostBaseURI = null;
     private String errorMessage = null;
@@ -609,7 +608,7 @@ public class ProvisionSensorThings {
         }
 
         int count = 0;
-        if(getResponse != null) {
+        if (getResponse != null) {
             for (Object element : getResponse.getValue()) {
                 JsonNode sensorElementName = mapper.valueToTree(element).get("name");
                 if (sensorElementName.equals(sensorName)) {
@@ -706,7 +705,7 @@ public class ProvisionSensorThings {
         }
 
         int count = 0;
-        if(getResponse != null) {
+        if (getResponse != null) {
             for (Object element : getResponse.getValue()) {
                 JsonNode observedPropertyElementName = mapper.valueToTree(element).get("name");
                 if (observedPropertyElementName.equals(observedPropertyName)) {
@@ -798,7 +797,7 @@ public class ProvisionSensorThings {
         }
 
         int count = 0;
-        if(getResponse != null) {
+        if (getResponse != null) {
             for (Object element : getResponse.getValue()) {
                 JsonNode thingElementName = mapper.valueToTree(element).get("name");
                 if (thingElementName.equals(thingName)) {
