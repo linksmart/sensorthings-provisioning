@@ -1,6 +1,18 @@
 package sensorthings.provisioning;
 
+import com.fasterxml.jackson.annotation.JsonGetter;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonSetter;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import gostapi.Configuration;
+import gostapi.GostClient;
+import gostapi.controllers.APIController;
+import gostapi.exceptions.APIException;
+import gostapi.models.*;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPut;
@@ -12,28 +24,12 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 import springfox.documentation.builders.PathSelectors;
 import springfox.documentation.builders.RequestHandlerSelectors;
-import springfox.documentation.service.ApiKey;
 import springfox.documentation.spi.DocumentationType;
 import springfox.documentation.spring.web.plugins.Docket;
 import springfox.documentation.swagger2.annotations.EnableSwagger2;
 
-import java.io.UnsupportedEncodingException;
-import java.util.List;
-
-import com.fasterxml.jackson.annotation.JsonGetter;
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonSetter;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import gostapi.GostClient;
-import gostapi.Configuration;
-import gostapi.controllers.APIController;
-import gostapi.exceptions.APIException;
-import gostapi.models.*;
-
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.util.*;
 
 import static com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL;
@@ -43,17 +39,9 @@ import static com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL;
 @EnableSwagger2
 public class ProvisionSensorThings {
 
-    public String getErrorMessage() {
-        return errorMessage;
-    }
-
-    public void setErrorMessage(String errorMessage) {
-        this.errorMessage = errorMessage;
-    }
-
-    private String errorMessage = null;
     private static String agentBaseURI = "undefined";
     private static String gostBaseURI = null;
+    private String errorMessage = null;
     private ObjectMapper mapper = new ObjectMapper();
     private ArrayNode statementsResponses = null;
     private ArrayNode locationsResponses = null;
@@ -64,30 +52,40 @@ public class ProvisionSensorThings {
     private String contentType = "application/json";
     private APIController controller = new GostClient().getClient();
     private HttpCallBackCatcher httpResponse = new HttpCallBackCatcher();
-    private String jsonString = null;
-    private JsonNode thingTree = null;
 
     public ProvisionSensorThings() {
     }
 
     public ProvisionSensorThings(String jsonString) {
 
+        JsonNode thingTree = null;
         try {
             thingTree = mapper.readTree(jsonString);
         } catch (IOException e) {
             e.printStackTrace();
         }
 
-        getUsingHttpClient(agentBaseURI+"/statement/");
-        getUsingHttpClient(gostBaseURI+"/v1.0/Things");
+        getUsingHttpClient(agentBaseURI + "/statement/");
+        getUsingHttpClient(gostBaseURI + "/v1.0/Things");
 
-        Iterator<JsonNode> things = thingTree.get("Things").elements();
+        Iterator<JsonNode> things = null;
+        if (thingTree != null) {
+            JsonNode thingArray = thingTree.get("Things");
+            if (thingArray != null) {
+                things = thingArray.elements();
+            }
+        }
 
-        Map<String, JsonNode> existingLocations = new LinkedHashMap<String, JsonNode>();
-        Map<String, JsonNode> existingDatastreams = new LinkedHashMap<String, JsonNode>();
-        Map<String, JsonNode> existingSensors = new LinkedHashMap<String, JsonNode>();
-        Map<String, JsonNode> existingObservedProperties = new LinkedHashMap<String, JsonNode>();
-        Map<String, JsonNode> existingThings = new LinkedHashMap<String, JsonNode>();
+        if (things == null) {
+            setErrorMessage("No Things in request body");
+            throw new IllegalArgumentException(getErrorMessage());
+        }
+
+        Map<String, JsonNode> existingLocations = new LinkedHashMap<>();
+        Map<String, JsonNode> existingDatastreams = new LinkedHashMap<>();
+        Map<String, JsonNode> existingSensors = new LinkedHashMap<>();
+        Map<String, JsonNode> existingObservedProperties = new LinkedHashMap<>();
+        Map<String, JsonNode> existingThings = new LinkedHashMap<>();
 
         while (things.hasNext()) {
             JsonNode thing = things.next();
@@ -121,7 +119,7 @@ public class ProvisionSensorThings {
             existingThings.put(thing.get("name").asText(), getExistingThing(thing));
             JsonNode propertiesNode = thing.get("properties");
             JsonNode locations = thing.get("Locations");
-            List<Integer> locationIDs = new ArrayList<Integer>();
+            List<Integer> locationIDs = new ArrayList<>();
             if (locations != null) {
 
                 Iterator<JsonNode> iter = thing.get("Locations").elements();
@@ -137,7 +135,7 @@ public class ProvisionSensorThings {
 
             if (datastreams != null) {
                 Iterator<JsonNode> iter = thing.get("Datastreams").elements();
-                int datastreamId = 0;
+                int datastreamId;
                 while (iter.hasNext()) {
                     JsonNode datastream = iter.next();
                     existingDatastreams.put(datastream.get("name").asText(), getExistingDatastream(datastream));
@@ -160,7 +158,6 @@ public class ProvisionSensorThings {
                             if (propertyName.equals(datastreamName)) {
                                 if (agentBaseURI != null && !agentBaseURI.equals("undefined")) {
                                     JsonNode datastreamProperty = propertiesNode.get(datastreamName);
-                                    String statement = datastreamProperty.get("statement").asText();
                                     ObjectNode postStatementJson = mapper.createObjectNode();
                                     postStatementJson.put("name", datastreamName);
                                     postStatementJson.set("statement", datastreamProperty.get("statement"));
@@ -199,11 +196,19 @@ public class ProvisionSensorThings {
 
         if (agentBaseURI == null) {
             System.out.println("Environment variable AGENT_BASE_URI is not set. No statements will be created.");
-        }else {
+        } else {
             System.out.println("AGENT_BASE_URI = " + agentBaseURI);
         }
 
         SpringApplication.run(ProvisionSensorThings.class, args);
+    }
+
+    private String getErrorMessage() {
+        return errorMessage;
+    }
+
+    private void setErrorMessage(String errorMessage) {
+        this.errorMessage = errorMessage;
     }
 
     @Bean
@@ -214,10 +219,6 @@ public class ProvisionSensorThings {
                 .paths(PathSelectors.any())
                 .build()
                 ;
-    }
-
-    private ApiKey apiKey() {
-        return new ApiKey("mykey", "api_key", "header");
     }
 
     private void addStatementsReponse(JsonNode node) {
@@ -322,7 +323,7 @@ public class ProvisionSensorThings {
         this.sensorsResponses = sensors;
     }
 
-    public void getUsingHttpClient(String endpoint) {
+    private void getUsingHttpClient(String endpoint) {
         CloseableHttpClient client = HttpClients.createDefault();
         HttpGet httpGet = new HttpGet(endpoint);
         CloseableHttpResponse response = null;
@@ -330,8 +331,8 @@ public class ProvisionSensorThings {
             response = client.execute(httpGet);
         } catch (IOException e) {
             e.printStackTrace();
-            setErrorMessage("Endpoint "+endpoint+" is not reachable");
-        throw new IllegalStateException(getErrorMessage());
+            setErrorMessage("Endpoint " + endpoint + " is not reachable");
+            throw new IllegalStateException(getErrorMessage());
         }
 
         try {
@@ -341,7 +342,7 @@ public class ProvisionSensorThings {
         }
     }
 
-    public void putJsonUsingHttpClient(String name, String json) {
+    private void putJsonUsingHttpClient(String name, String json) {
         CloseableHttpClient client = HttpClients.createDefault();
         HttpPut httpPut = new HttpPut(agentBaseURI + "/statement/" + name);
 
@@ -361,16 +362,19 @@ public class ProvisionSensorThings {
         } catch (IOException e) {
             e.printStackTrace();
         }
-        if (response.getEntity() != null) {
-            try {
-                addStatementsReponse(mapper.readTree(response.getEntity().getContent()));
-            } catch (IOException e) {
-                e.printStackTrace();
+        if (response != null) {
+            if (response.getEntity() != null) {
+                try {
+                    addStatementsReponse(mapper.readTree(response.getEntity().getContent()));
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
             }
         }
         try {
             client.close();
-        } catch (IOException e) {
+        } catch (
+                IOException e) {
             e.printStackTrace();
         }
     }
@@ -394,15 +398,17 @@ public class ProvisionSensorThings {
         }
 
         int count = 0;
-        for (Object element : getResponse.getValue()) {
-            JsonNode locationElementName = mapper.valueToTree(element).get("name");
-            if (locationElementName.equals(locationName)) {
-                if (count > 0) {
-                    setErrorMessage("There are multiple locations with the the name " + locationName + " registered in Gost server. Please clean this up.");
-                    throw new IllegalStateException(getErrorMessage());
+        if (getResponse != null) {
+            for (Object element : getResponse.getValue()) {
+                JsonNode locationElementName = mapper.valueToTree(element).get("name");
+                if (locationElementName.equals(locationName)) {
+                    if (count > 0) {
+                        setErrorMessage("There are multiple locations with the the name " + locationName + " registered in Gost server. Please clean this up.");
+                        throw new IllegalStateException(getErrorMessage());
+                    }
+                    existingLocation = mapper.valueToTree(element);
+                    count++;
                 }
-                existingLocation = mapper.valueToTree(element);
-                count++;
             }
         }
         return existingLocation;
@@ -431,7 +437,7 @@ public class ProvisionSensorThings {
                 patchRequest.setEncodingType(locationEncodingType.asText());
                 patchRequest.setLocation(locationLocation);
                 controller.setHttpCallBack(httpResponse);
-                PatchLocationResponse patchResponse = null;
+                PatchLocationResponse patchResponse;
                 try {
                     patchResponse = controller.patchLocation(existingLocationId, contentType, patchRequest);
                     addLocationsReponse(mapper.valueToTree(patchResponse));
@@ -453,7 +459,7 @@ public class ProvisionSensorThings {
             postRequest.setEncodingType(locationEncodingType.asText());
             postRequest.setLocation(locationLocation);
             controller.setHttpCallBack(httpResponse);
-            PostLocationResponse postRespose = null;
+            PostLocationResponse postRespose;
             try {
                 postRespose = controller.postLocation(contentType, postRequest);
                 addLocationsReponse(mapper.valueToTree(postRespose));
@@ -491,15 +497,17 @@ public class ProvisionSensorThings {
         }
 
         int count = 0;
-        for (Object element : getResponse.getValue()) {
-            JsonNode datastreamElementName = mapper.valueToTree(element).get("name");
-            if (datastreamElementName.equals(datastreamName)) {
-                if (count > 0) {
-                    setErrorMessage("There are multiple datastreams with the the name " + datastreamName + " registered in Gost server. Please clean this up.");
-                    throw new IllegalStateException(getErrorMessage());
+        if (getResponse != null) {
+            for (Object element : getResponse.getValue()) {
+                JsonNode datastreamElementName = mapper.valueToTree(element).get("name");
+                if (datastreamElementName.equals(datastreamName)) {
+                    if (count > 0) {
+                        setErrorMessage("There are multiple datastreams with the the name " + datastreamName + " registered in Gost server. Please clean this up.");
+                        throw new IllegalStateException(getErrorMessage());
+                    }
+                    existingDatastream = mapper.valueToTree(element);
+                    count++;
                 }
-                existingDatastream = mapper.valueToTree(element);
-                count++;
             }
         }
         return existingDatastream;
@@ -536,7 +544,7 @@ public class ProvisionSensorThings {
                 patchRequest.setDescription(datastreamDescription.asText());
                 patchRequest.setObservationType(datastreamObservationType.asText());
                 patchRequest.setUnitOfMeasurement(datastreamUnitOfMeasurement);
-                PatchDatastreamResponse patchResponse = null;
+                PatchDatastreamResponse patchResponse;
                 controller.setHttpCallBack(httpResponse);
                 try {
                     patchResponse = controller.patchDatastream(existingDatastreamId, contentType, patchRequest);
@@ -561,7 +569,7 @@ public class ProvisionSensorThings {
             postRequest.setThing(datastreamThing);
             postRequest.setObservedProperty(datastreamObservedProperty);
             postRequest.setSensor(datastreamSensor);
-            PostDatastreamLinkedResponse postResponse = null;
+            PostDatastreamLinkedResponse postResponse;
             controller.setHttpCallBack(httpResponse);
             try {
                 postResponse = controller.postDatastreamLinked(contentType, postRequest);
@@ -600,15 +608,17 @@ public class ProvisionSensorThings {
         }
 
         int count = 0;
-        for (Object element : getResponse.getValue()) {
-            JsonNode sensorElementName = mapper.valueToTree(element).get("name");
-            if (sensorElementName.equals(sensorName)) {
-                if (count > 0) {
-                    setErrorMessage("There are multiple sensors with the the name " + sensorName + " registered in Gost server. Please clean this up.");
-                    throw new IllegalStateException(getErrorMessage());
+        if(getResponse != null) {
+            for (Object element : getResponse.getValue()) {
+                JsonNode sensorElementName = mapper.valueToTree(element).get("name");
+                if (sensorElementName.equals(sensorName)) {
+                    if (count > 0) {
+                        setErrorMessage("There are multiple sensors with the the name " + sensorName + " registered in Gost server. Please clean this up.");
+                        throw new IllegalStateException(getErrorMessage());
+                    }
+                    existingSensor = mapper.valueToTree(element);
+                    count++;
                 }
-                existingSensor = mapper.valueToTree(element);
-                count++;
             }
         }
         return existingSensor;
@@ -635,7 +645,7 @@ public class ProvisionSensorThings {
                 patchRequest.setDescription(sensorDescription.asText());
                 patchRequest.setEncodingType(sensorEncodingType.asText());
                 patchRequest.setMetadata(sensorMetadata.asText());
-                PatchSensorResponse patchResponse = null;
+                PatchSensorResponse patchResponse;
                 controller.setHttpCallBack(httpResponse);
                 try {
                     patchResponse = controller.patchSensor(existingSensorId, contentType, patchRequest);
@@ -657,7 +667,7 @@ public class ProvisionSensorThings {
             postRequest.setDescription(sensorDescription.asText());
             postRequest.setEncodingType(sensorEncodingType.asText());
             postRequest.setMetadata(sensorMetadata.asText());
-            PostSensorResponse postResponse = null;
+            PostSensorResponse postResponse;
             controller.setHttpCallBack(httpResponse);
             try {
                 postResponse = controller.postSensor(contentType, postRequest);
@@ -695,15 +705,17 @@ public class ProvisionSensorThings {
         }
 
         int count = 0;
-        for (Object element : getResponse.getValue()) {
-            JsonNode observedPropertyElementName = mapper.valueToTree(element).get("name");
-            if (observedPropertyElementName.equals(observedPropertyName)) {
-                if (count > 0) {
-                    setErrorMessage("There are multiple observedProperties with the the name " + observedPropertyName + " registered in Gost server. Please clean this up.");
-                    throw new IllegalStateException(getErrorMessage());
+        if(getResponse != null) {
+            for (Object element : getResponse.getValue()) {
+                JsonNode observedPropertyElementName = mapper.valueToTree(element).get("name");
+                if (observedPropertyElementName.equals(observedPropertyName)) {
+                    if (count > 0) {
+                        setErrorMessage("There are multiple observedProperties with the the name " + observedPropertyName + " registered in Gost server. Please clean this up.");
+                        throw new IllegalStateException(getErrorMessage());
+                    }
+                    existingObservedProperty = mapper.valueToTree(element);
+                    count++;
                 }
-                existingObservedProperty = mapper.valueToTree(element);
-                count++;
             }
         }
         return existingObservedProperty;
@@ -727,7 +739,7 @@ public class ProvisionSensorThings {
                 PatchObservedPropertyRequest patchObservedPropertyBody = new PatchObservedPropertyRequest();
                 patchObservedPropertyBody.setDescription(observedPropertyDescription.asText());
                 patchObservedPropertyBody.setDefinition(observedPropertyDefinition.asText());
-                PatchObservedPropertyResponse patchResponse = null;
+                PatchObservedPropertyResponse patchResponse;
                 controller.setHttpCallBack(httpResponse);
                 try {
                     patchResponse = controller.patchObservedProperty(existingObservedPropertyId, contentType, patchObservedPropertyBody);
@@ -748,7 +760,7 @@ public class ProvisionSensorThings {
             postRequest.setName(observedPropertyName.asText());
             postRequest.setDescription(observedPropertyDescription.asText());
             postRequest.setDefinition(observedPropertyDefinition.asText());
-            PostObservedPropertyResponse postResponse = null;
+            PostObservedPropertyResponse postResponse;
             controller.setHttpCallBack(httpResponse);
             try {
                 postResponse = controller.postObservedProperty(contentType, postRequest);
@@ -785,15 +797,17 @@ public class ProvisionSensorThings {
         }
 
         int count = 0;
-        for (Object element : getResponse.getValue()) {
-            JsonNode thingElementName = mapper.valueToTree(element).get("name");
-            if (thingElementName.equals(thingName)) {
-                if (count > 0) {
-                    setErrorMessage("There are multiple things with the the name " + thingName + " registered in Gost server. Please clean this up.");
-                    throw new IllegalStateException(getErrorMessage());
+        if(getResponse != null) {
+            for (Object element : getResponse.getValue()) {
+                JsonNode thingElementName = mapper.valueToTree(element).get("name");
+                if (thingElementName.equals(thingName)) {
+                    if (count > 0) {
+                        setErrorMessage("There are multiple things with the the name " + thingName + " registered in Gost server. Please clean this up.");
+                        throw new IllegalStateException(getErrorMessage());
+                    }
+                    existingThing = mapper.valueToTree(element);
+                    count++;
                 }
-                existingThing = mapper.valueToTree(element);
-                count++;
             }
         }
         return existingThing;
@@ -834,7 +848,7 @@ public class ProvisionSensorThings {
                     }
                     patchRequest.setProperties(thingProperties);
                 }
-                PatchThingResponse patchResponse = null;
+                PatchThingResponse patchResponse;
                 controller.setHttpCallBack(httpResponse);
                 try {
                     patchResponse = controller.patchThing(existingThingId, contentType, patchRequest);
@@ -863,14 +877,14 @@ public class ProvisionSensorThings {
                 }
                 postRequest.setProperties(thingProperties);
             }
-            List<Object> locationsList = new ArrayList<Object>();
+            List<Object> locationsList = new ArrayList<>();
             for (Integer locationID : locationIDs) {
                 ObjectNode locationNode = mapper.createObjectNode();
                 locationNode.put("@iot.id", locationID.toString());
                 locationsList.add(locationNode);
             }
             postRequest.setLocations(locationsList);
-            PostThingWithExistingLocationResponse postResponse = null;
+            PostThingWithExistingLocationResponse postResponse;
             controller.setHttpCallBack(httpResponse);
             try {
                 postResponse = controller.postThingWithExistingLocation(contentType, postRequest);
