@@ -65,7 +65,9 @@ public class ProvisionSensorThings {
             e.printStackTrace();
         }
 
-        getUsingHttpClient(agentBaseURI + "/statement/");
+        if(agentBaseURI != null) {
+            getUsingHttpClient(agentBaseURI + "/statement/");
+        }
         getUsingHttpClient(gostBaseURI + "/v1.0/Things");
 
         Iterator<JsonNode> things = null;
