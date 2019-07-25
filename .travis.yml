@@ -1,7 +1,6 @@
 language: java
 
-install: true
-script: ./mvnw clean install
+script: mvn clean install
 
 before_deploy:
   - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
