@@ -41,6 +41,7 @@ public class ProvisionSensorThings {
 
     private static String agentBaseURI = "undefined";
     private static String gostBaseURI = null;
+    private static String gostMqttPrefix = "GOST";
     private String errorMessage = null;
     private ObjectMapper mapper = new ObjectMapper();
     private ArrayNode statementsResponses = null;
@@ -165,7 +166,7 @@ public class ProvisionSensorThings {
                                     postStatementJson.set("statement", datastreamProperty.get("statement"));
 
                                     ArrayNode statementOutput = mapper.createArrayNode();
-                                    String outputString = "GOST/Datastreams(" + datastreamId + ")/Observations";
+                                    String outputString = gostMqttPrefix+"/Datastreams(" + datastreamId + ")/Observations";
                                     statementOutput.add(outputString);
 
                                     postStatementJson.set("output", statementOutput);
@@ -187,6 +188,9 @@ public class ProvisionSensorThings {
 
         gostBaseURI = System.getenv("GOST_BASE_URI");
         agentBaseURI = System.getenv("AGENT_BASE_URI");
+        if(System.getenv("GOST_MQTT_PREFIX") != null) {
+            gostMqttPrefix = System.getenv("GOST_MQTT_PREFIX");
+        }
 
         if (gostBaseURI == null) {
             System.out.println("Set GOST_BASE_URI environment variable. Exiting...");
