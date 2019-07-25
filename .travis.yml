@@ -1,6 +1,11 @@
+sudo: false
 language: java
+services:
+- docker
 
-script: mvn clean install
+install:
+- provider: script
+  script: "cp .travis.settings.xml $HOME/.m2/settings.xml && mvn clean install"
 
 before_deploy:
   - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
