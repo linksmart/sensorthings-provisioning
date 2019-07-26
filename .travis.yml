@@ -7,10 +7,8 @@ before_install:
   - mvn --version
   - chmod +x mvnw
 
-script: "mvn clean install"
-
 before_deploy:
-  - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+  - echo "$DOCKER_PASSWORD" | docker login --username "$DOCKER_USERNAME" --password-stdin
 deploy:
   - provider: script
     script: docker build -t linksmart/sensorthings-provisioning:latest . && docker push linksmart/sensorthings-provisioning:latest
