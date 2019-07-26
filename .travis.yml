@@ -1,6 +1,8 @@
 language: java
 
 before_install:
+  - java -version
+  - mvn --version
   - chmod +x mvnw
 
 script: "mvn clean install"
