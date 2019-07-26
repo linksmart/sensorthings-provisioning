@@ -3,14 +3,14 @@ jdk:
   - oraclejdk11
 
 before_install:
-  - "java -version"
-  - "mvn --version"
-  - "chmod +x mvnw"
+  - java -version
+  - mvn --version
+  - chmod +x mvnw
 
 before_deploy:
-  - "echo $DOCKER_PASSWORD | docker login -u $DOCKER_USERNAME --password-stdin"
-  - "docker build -t linksmart/sensorthings-provisioning:latest ."
-  - "docker images"
+  - docker build -t linksmart/sensorthings-provisioning:latest .
+  - docker images
+  - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
 deploy:
   - provider: script
     docker push linksmart/sensorthings-provisioning:latest
