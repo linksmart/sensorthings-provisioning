@@ -13,6 +13,6 @@ before_deploy:
   - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
 deploy:
   - provider: script
-    docker push linksmart/sensorthings-provisioning:latest
+    script: docker push linksmart/sensorthings-provisioning:latest
     on:
       branch: master
