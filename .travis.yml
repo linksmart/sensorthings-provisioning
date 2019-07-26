@@ -9,8 +9,10 @@ before_install:
 
 before_deploy:
   - echo "$DOCKER_PASSWORD" | docker login --username "$DOCKER_USERNAME" --password-stdin
+  - docker build -t linksmart/sensorthings-provisioning:latest .
+  - docker images
 deploy:
   - provider: script
-    script: docker build -t linksmart/sensorthings-provisioning:latest . && docker push linksmart/sensorthings-provisioning:latest
+    docker push linksmart/sensorthings-provisioning:latest
     on:
       branch: master
